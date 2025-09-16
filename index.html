@@ -24,12 +24,12 @@
   <div class="slider-container">
     <label for="clapVolume">Clap Volume:</label>
     <input type="range" id="clapVolume" min="0" max="1" step="0.01" value="0.25">
-    <span id="clapVolValue">0.50</span>
+    <span id="clapVolValue">0.25</span>
   </div>
   <div class="slider-container">
     <label for="hatVolume">Open Hi-Hat Volume:</label>
     <input type="range" id="hatVolume" min="0" max="1" step="0.01" value="0.25">
-    <span id="hatVolValue">0.50</span>
+    <span id="hatVolValue">0.25</span>
   </div>
 
 <script>
@@ -75,7 +75,7 @@ const envs=[
   new Tone.AmplitudeEnvelope({attack:0.001,decay:0.12,sustain:0,release:0.04}),
   new Tone.AmplitudeEnvelope({attack:0.001,decay:0.14,sustain:0,release:0.05})
 ];
-const clapGain = new Tone.Gain(0.5).toDestination();
+const clapGain = new Tone.Gain(0.25).toDestination();
 const reverbClap = new Tone.Reverb({decay:1.5,wet:0.3}).connect(clapGain);
 noise.connect(bandpass); bandpass.connect(highpass);
 highpass.fan(...envs);
@@ -84,7 +84,6 @@ function triggerClap(time){ envs.forEach((e,i)=>e.triggerAttackRelease(0.08+i*0.
 
 // ---------- ORIGINAL OPEN HI-HAT NODES ----------
 let currentNote="C7";
-// FM Synth layer
 const metallicFM=new Tone.FMSynth({
   harmonicity:8,
   modulationIndex:32,
@@ -96,16 +95,17 @@ const metallicFM=new Tone.FMSynth({
 const gainNode=new Tone.Gain(0.5);
 const hpFilter=new Tone.Filter(6000,"highpass");
 metallicFM.connect(gainNode).connect(hpFilter);
-// Noise layer
+
 const noiseHat=new Tone.Noise("white");
 const noiseEnv=new Tone.AmplitudeEnvelope({attack:0.001,decay:0.43,sustain:0,release:0});
 const noiseVolume=new Tone.Gain(0.25);
 const noiseHPFilter=new Tone.Filter(6000,"highpass");
 noiseHat.connect(noiseEnv); noiseEnv.connect(noiseVolume); noiseVolume.connect(noiseHPFilter);
-// Hi-Hat bus + effects
-const hiHatBus=new Tone.Gain(0.5);
+
+const hiHatBus=new Tone.Gain(0.25);
 hpFilter.connect(hiHatBus);
 noiseHPFilter.connect(hiHatBus);
+
 const comp=new Tone.Compressor({threshold:-20,ratio:4,attack:0.002,release:0.05,knee:6});
 const dist=new Tone.Distortion({distortion:0.3,oversample:"4x"});
 const eq=new Tone.EQ3(-12,0,2);
@@ -127,14 +127,13 @@ Tone.Transport.scheduleRepeat((time)=>{
   kick.main.connect(cleanGain);
   kick.sub.connect(reverbRumble);
   if(beatCounter===2||beatCounter===4) triggerClap(time);
-  // hi-hat upbeat
   triggerHiHat(time+Tone.Time("8n"));
 },"4n");
 
 // ---------- START / STOP ----------
 document.getElementById("startBtn").addEventListener("click",async()=>{
   await Tone.start();
-  noiseHat.start(); // start noise for hi-hat
+  noiseHat.start();
   Tone.Transport.start("+0.05");
 });
 document.getElementById("stopBtn").addEventListener("click",()=>{
