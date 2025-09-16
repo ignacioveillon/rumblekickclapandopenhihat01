@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kick + Rumble + Clap + Integrated Open Hi-Hat</title>
+  <script src="https://cdn.jsdelivr.net/npm/tone@latest/build/Tone.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background:#111; color:#fff; text-align:center; padding:40px; }
+    button,input[type=range]{margin:8px;padding:12px;border-radius:8px;font-size:16px;cursor:pointer;}
+    button{border:none;background:#4cafef;color:#000;}
+    button:hover{background:#3a9dd9;}
+    input[type=range]{width:300px;}
+    .slider-container{margin:8px; display:flex; align-items:center; justify-content:center;}
+    .slider-container span{width:60px;margin-left:10px;text-align:left;}
+  </style>
+</head>
+<body>
+  <h1>Kick + Rumble + Clap + Original Open Hi-Hat (140 BPM)</h1>
+  <div>
+    <button id="startBtn">Start</button>
+    <button id="stopBtn">Stop</button>
+  </div>
+
+  <div class="slider-container">
+    <label for="clapVolume">Clap Volume:</label>
+    <input type="range" id="clapVolume" min="0" max="1" step="0.01" value="0.5">
+    <span id="clapVolValue">0.50</span>
+  </div>
+  <div class="slider-container">
+    <label for="hatVolume">Hi-Hat Volume:</label>
+    <input type="range" id="hatVolume" min="0" max="1" step="0.01" value="0.5">
+    <span id="hatVolValue">0.50</span>
+  </div>
+
+<script>
+// === CONSTANTS ===
+const F1 = 43.65, F4 = F1 * 4;
+
+// ---------- KICK + RUMBLE ----------
+function triggerKick(time){
+  const oscMain = new Tone.Oscillator({ type:"sine", frequency:F4, volume:-6 });
+  const ampMain = new Tone.Gain(1);
+  oscMain.connect(ampMain);
+  oscMain.frequency.setValueAtTime(F4,time);
+  oscMain.frequency.exponentialRampToValueAtTime(F1,time+0.063);
+  ampMain.gain.setValueAtTime(1,time);
+  ampMain.gain.exponentialRampToValueAtTime(0.0001,time+0.125);
+  oscMain.start(time); oscMain.stop(time+0.25);
+
+  const oscSub = new Tone.Oscillator({ type:"sine", frequency:F1, volume:-3 });
+  const ampSub = new Tone.Gain(0.6);
+  oscSub.connect(ampSub);
+  ampSub.gain.setValueAtTime(0.6,time);
+  ampSub.gain.exponentialRampToValueAtTime(0.0001,time+1.0);
+  oscSub.start(time); oscSub.stop(time+1.0);
+
+  return {main:ampMain,sub:ampSub};
+}
+const reverbRumble = new Tone.Reverb({ decay:6, wet:0.4 });
+const distortionRumble = new Tone.Distortion({ distortion:0.4, oversample:"4x" });
+const filterRumble = new Tone.Filter(F1*2,"lowpass");
+const eqRumble = new Tone.EQ3({ low:+6, mid:0, high:-6 });
+const compRumble = new Tone.Compressor({ threshold:-24, ratio:6 });
+const rumbleGain = new Tone.Gain(0.25).toDestination();
+reverbRumble.chain(distortionRumble,filterRumble,eqRumble,compRumble,rumbleGain);
+const cleanGain = new Tone.Gain(0.6).toDestination();
+
+// ---------- CLAP ----------
+const noise = new Tone.Noise("white").start();
+const bandpass = new Tone.Filter({ type:"bandpass", frequency:1800, Q:1 });
+const highpass = new Tone.Filter({ type:"highpass", frequency:400 });
+const envs=[
+  new Tone.AmplitudeEnvelope({attack:0.001,decay:0.08,sustain:0,release:0.02}),
+  new Tone.AmplitudeEnvelope({attack:0.001,decay:0.10,sustain:0,release:0.03}),
+  new Tone.AmplitudeEnvelope({attack:0.001,decay:0.12,sustain:0,release:0.04}),
+  new Tone.AmplitudeEnvelope({attack:0.001,decay:0.14,sustain:0,release:0.05})
+];
+const clapGain = new Tone.Gain(0.5).toDestination();
+const reverbClap = new Tone.Reverb({decay:1.5,wet:0.3}).connect(clapGain);
+noise.connect(bandpass); bandpass.connect(highpass);
+highpass.fan(...envs);
+envs.forEach(e=>e.connect(reverbClap));
+function triggerClap(time){ envs.forEach((e,i)=>e.triggerAttackRelease(0.08+i*0.02,time+i*0.015)); }
+
+// ---------- ORIGINAL OPEN HI-HAT NODES ----------
+let currentNote="C7";
+// FM Synth layer
+const metallicFM=new Tone.FMSynth({
+  harmonicity:8,
+  modulationIndex:32,
+  oscillator:{type:"square"},
+  envelope:{attack:0.001,decay:0.214,sustain:0,release:0},
+  modulation:{type:"square"},
+  modulationEnvelope:{attack:0.001,decay:0.214,sustain:0,release:0}
+});
+const gainNode=new Tone.Gain(0.5);
+const hpFilter=new Tone.Filter(6000,"highpass");
+metallicFM.connect(gainNode).connect(hpFilter);
+// Noise layer
+const noiseHat=new Tone.Noise("white");
+const noiseEnv=new Tone.AmplitudeEnvelope({attack:0.001,decay:0.43,sustain:0,release:0});
+const noiseVolume=new Tone.Gain(0.25);
+const noiseHPFilter=new Tone.Filter(6000,"highpass");
+noiseHat.connect(noiseEnv); noiseEnv.connect(noiseVolume); noiseVolume.connect(noiseHPFilter);
+// Hi-Hat bus + effects
+const hiHatBus=new Tone.Gain(0.5);
+hpFilter.connect(hiHatBus);
+noiseHPFilter.connect(hiHatBus);
+const comp=new Tone.Compressor({threshold:-20,ratio:4,attack:0.002,release:0.05,knee:6});
+const dist=new Tone.Distortion({distortion:0.3,oversample:"4x"});
+const eq=new Tone.EQ3(-12,0,2);
+const reverb=new Tone.Reverb({decay:0.5,preDelay:0.01,wet:0.2});
+hiHatBus.chain(comp,dist,eq,reverb);
+reverb.toDestination();
+
+function triggerHiHat(time){
+  metallicFM.triggerAttackRelease(currentNote,"16n",time);
+  noiseEnv.triggerAttackRelease(noiseEnv.decay,time);
+}
+
+// ---------- TRANSPORT ----------
+Tone.Transport.bpm.value=140;
+let beatCounter=0;
+Tone.Transport.scheduleRepeat((time)=>{
+  beatCounter=(beatCounter%4)+1;
+  const kick=triggerKick(time);
+  kick.main.connect(cleanGain);
+  kick.sub.connect(reverbRumble);
+  if(beatCounter===2||beatCounter===4) triggerClap(time);
+  // hi-hat upbeat
+  triggerHiHat(time+Tone.Time("8n"));
+},"4n");
+
+// ---------- START / STOP ----------
+document.getElementById("startBtn").addEventListener("click",async()=>{
+  await Tone.start();
+  noiseHat.start(); // start noise for hi-hat
+  Tone.Transport.start("+0.05");
+});
+document.getElementById("stopBtn").addEventListener("click",()=>{
+  Tone.Transport.stop();
+  Tone.Transport.cancel();
+  noiseHat.stop();
+});
+
+// ---------- VOLUME SLIDERS ----------
+document.getElementById("clapVolume").addEventListener("input",e=>{
+  const v=parseFloat(e.target.value);
+  clapGain.gain.value=v;
+  document.getElementById("clapVolValue").textContent=v.toFixed(2);
+});
+document.getElementById("hatVolume").addEventListener("input",e=>{
+  const v=parseFloat(e.target.value);
+  hiHatBus.gain.value=v;
+  document.getElementById("hatVolValue").textContent=v.toFixed(2);
+});
+</script>
+</body>
+</html>
